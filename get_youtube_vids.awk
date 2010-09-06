@@ -107,12 +107,22 @@ function get_vid_info(vid_id, INFO,    InetFile, Request, HEADERS, matches, esca
         return
     }
 
+    expect_title = 0
     # fix this bug:
     # http://www.youtube.com/watch?v=nb1u7wMKywM
     while ((InetFile |& getline) > 0) {
-	if (match($0, /"fmt_url_map": "([^"]+)"/, matches)) {
-	    escaped_urls = url_unescape(matches[1])
-            split(escaped_urls, fmt_urls, /,?[0-9]+\|/)
+        if (expect_title == 2) {
+            if (match($0, /- (.+)$/, matches)) {
+                INFO["title"] = matches[1]
+            }
+        }
+        if (expect_title) {
+            expect_title++;
+        }
+        if (match($0, /"fmt_url_map": "([^"]+)"/, matches)) {
+            escaped_urls = url_unescape(matches[1])
+            deslash_urls = url_deslash(escaped_urls)
+            split(deslash_urls, fmt_urls, /,?[0-9]+\|/)
             for (fmt in fmt_urls) {
                 if (fmt_urls[fmt] ~ /itag=5/) {
                     # fmt number 5 is the best video
@@ -124,11 +134,14 @@ function get_vid_info(vid_id, INFO,    InetFile, Request, HEADERS, matches, esca
             close(InetFile)
             return
         }
-        else if (match($0, /<title>YouTube - ([^<]+)</, matches)) {
+        else if (match($0, /<title>/)) {
+            expect_title = 1
+        }
+        #else if (match($0, /<title>YouTube - ([^<]+)</, matches)) {
             # lets try to get the title of the video from html tag which is
             # less likely a subject to future html design changes
-            INFO["title"] = matches[1]
-        }
+        #    INFO["title"] = matches[1]
+        #}
     }
     close(InetFile)
 }
@@ -142,17 +155,27 @@ function get_vid_info(vid_id, INFO,    InetFile, Request, HEADERS, matches, esca
 function url_unescape(str,    nmatches, entity, entities, seen, i) {
     nmatches = find_all_matches(str, "%[0-9A-Fa-f][0-9A-Fa-f]", entities)
     for (i = 1; i <= nmatches; i++) {
-	entity = entities[i]
+        entity = entities[i]
         if (!seen[entity]) {
             if (entity == "%26") { # special case for gsub(s, r, t), when r = '&'
                 gsub(entity, "\\&", str)
             }
             else {
-	        gsub(entity, url_entity_unescape(entity), str)
+                gsub(entity, url_entity_unescape(entity), str)
             }
             seen[entity] = 1
         }
     }
+    return str
+}
+
+#
+# function url_deslash
+#
+# given a url that has escaped slashes \/, unescape them to just /
+#
+function url_deslash(str) {
+    gsub(/\\\//, "/", str)
     return str
 }
 
